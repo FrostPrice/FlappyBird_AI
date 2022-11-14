@@ -1,6 +1,7 @@
 import neat # Usado para criar a AI
 import pygame
 import random
+import os
 pygame.font.init() # Inicializa as fontes do Pygame
 
 # region - Configs (Contantes)
@@ -51,7 +52,7 @@ class Bird:
             displacement = 16
 
         if displacement < 0: # Permite o pulo do passáro
-            d -= 2 # Tamanho do pulo
+            displacement -= 2 # Tamanho do pulo
 
         self.y += displacement
 
@@ -145,7 +146,7 @@ class Pipe:
         top_point = mask_bird.overlap(mask_top_pipe, top_offset) # Valida se o mask_bird e mask_top_pipe estão um sobre o outro usando o top_offset como referência, senão retorna None
         bottom_point = mask_bird.overlap(mask_bottom_pipe, bottom_offset) # Valida se o mask_bird e mask_bottom_pipe estão um sobre o outro usando o bottom_offset como referência, senão retorna None
 
-        if top_offset or bottom_offset:
+        if top_point or bottom_point:
             return True
         
         return False
@@ -178,7 +179,7 @@ class Base:
         window.blit(self.IMG, (self.x_2, self.y))
 # endregion - Classes
 
-def draw_window(window, bird, pipes, base, score):
+def draw_window(window, birds, pipes, base, score):
     window.blit(BACKGROUND_IMG, (0, 0)) # window.blit mostra imagens da tela
     for pipe in pipes: # Pode haver mais de 1 cano na tela
         pipe.draw(window)
@@ -187,59 +188,111 @@ def draw_window(window, bird, pipes, base, score):
     window.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10)) # O (WIN_WIDTH - 10 - text.get_width() faz com que o texto não saia da tela
 
     base.draw(window)
-    bird.draw(window)
+    for bird in birds:
+        bird.draw(window)
 
     pygame.display.update() # Mostra os items criados com .draw na tela
 
-# Função principal para rodar o jogo
-def main():
+# Função Fitness para rodar o jogo
+def eval_genome(genomes, config):
     pygame.init()
     window = pygame.display.set_mode(WIN_SIZE) # Define a tela de jogo e o tamanho
     clock = pygame.time.Clock() # Cria o elemento para definir o FPS do jogo
-
-    bird = Bird(230, 350) # Cria o passáro e define posição (x e y) inicial
     base = Base(730) # Cria o chão e define a posição y
     pipes = [Pipe(600)] # Cria todos os Canos que aparecem no jogo
 
-    is_playing = True
-    score = 0
+    birds = [] # Cria os passáros e define posição (x e y) inicial
+    neuron_networks = [] # Guarda as informações dos Nodes
+    birds_genomes = [] # Guarda informações dos Genomes dos Passáros
 
+    for _, genome in genomes:
+        network = neat.nn.FeedForwardNetwork.create(genome, config)
+        neuron_networks.append(network)
+        birds.append(Bird(230, 350))
+        genome.fitness = 0 # Começa com o Level de Fitness no 0
+        birds_genomes.append(genome)
+
+    score = 0
+    is_playing = True
     while is_playing:
         clock.tick(30) # Define o FrameRate do jogo pra ser 30 FPS
+    
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 is_playing = False
+                pygame.quit() # Sai do modo Pygame
+                quit() # Saí da aplicação inteira
+
+        pipe_index = 0
+        if len(birds) > 0:
+            # O Código abaixo faz com que os Passáros olhem para o obstaculo certo
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].TOP_PIPE.get_width(): # Se a posição dos passáros passou o cano do index 0, muda para o segundo cano
+                pipe_index = 1
+        else: # Se não tiver nenhum passáro, saia do jogo
+            is_playing = False
+            break
+
+        for index, bird in enumerate(birds): # Condição de vitória para a AI
+            bird.move()
+            birds_genomes[index].fitness += 0.1
+
+            output = neuron_networks[index].activate((bird.y, abs(bird.y - pipes[pipe_index].height), abs(bird.y - pipes[pipe_index].bottom)))
+
+            if output[0] > 0.5:
+                bird.jump()
         
-        # bird.move()
         base.move()
+
         add_pipe = False
         remove_pipe = [] # Lista para remover os canos após sairem da tela
         for pipe in pipes:
-            if pipe.collide(bird): # Valida colisão com o passáro
-                pass
+            for index, bird in enumerate(birds):
+                if pipe.collide(bird): # Valida colisão com o passáro
+                    birds_genomes[index].fitness -= 1
+                    birds.pop(index)
+                    neuron_networks.pop(index)
+                    birds_genomes.pop(index)
+
+                if not pipe.bird_passed and pipe.x < bird.x: # Verifica se o passáro passou pelo cano sem colidir
+                    pipe.bird_passed = True
+                    add_pipe = True # Vai gerar outro cano
 
             if pipe.x + pipe.TOP_PIPE.get_width() < 0: # Valida se o Cano está fora da tela
                 remove_pipe.append(pipe)
-
-            if not pipe.bird_passed and pipe.x < bird.x: # Verifica se o passáro passou pelo cano sem colidir
-                pipe.bird_passed = True
-                add_pipe = True # Vai gerar outro cano
 
             pipe.move()
 
         if add_pipe:
             score += 1
+            for genome in birds_genomes:
+                genome.fitness += 5
             pipes.append(Pipe(600))
 
         for pipe in remove_pipe:
             pipes.remove(pipe)
 
-        # Colisão com o chão
-        if bird.y + bird.img.get_height() >= 730:
-            pass
+        # Colisão com o chão e teto
+        for index, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
+                birds.pop(index)
+                neuron_networks.pop(index)
+                birds_genomes.pop(index)
 
-        draw_window(window, bird, pipes, base, score)
+        draw_window(window, birds, pipes, base, score)
 
-    pygame.quit()
+# region - Neat
+# As configurações abaixo são de acordo com as informações da Documentação do NEAT: https://neat-python.readthedocs.io/en/latest/xor_example.html
+def run(neat_config_file):
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, neat_config_file) # Creates the config for Neat
+    population = neat.Population(config)
+    population.add_reporter(neat.StdOutReporter(True)) # Will show statistics in the Console about the Population
+    population.add_reporter(neat.StatisticsReporter())
 
-main()
+    # A função fitness vai gerar o Fitness para os passáros
+    winner = population.run(eval_genome, 50)
+
+if __name__ == "__main__":
+    local_dir = os.path.dirname(__file__)
+    neat_config_path = os.path.join(local_dir, "neat_config")
+    run(neat_config_path)
+# endregion - Neat
