@@ -7,6 +7,7 @@ This project uses:
 - OOP as a paradigm
 - NEAT to define the AI
 - Pygame to create the game
+- Using population of 100 will create the "perfect AI" in the 1º generation
 
 ### Link for the Libraries used:
 

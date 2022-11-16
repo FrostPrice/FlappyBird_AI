@@ -14,9 +14,11 @@ BIRD_IMGS = [pygame.transform.scale2x(pygame.image.load("./imgs/bird1.png")), py
 PIPE_IMG = pygame.transform.scale2x(pygame.image.load("./imgs/pipe.png"))
 BASE_IMG = pygame.transform.scale2x(pygame.image.load("./imgs/base.png"))
 BACKGROUND_IMG = pygame.transform.scale2x(pygame.image.load("./imgs/bg.png"))
+# PS: Usamos o pygame.transform.scale2x() para deixar as imagens maiores
 
 FONT = pygame.font.SysFont("comicsans", 50)
-# PS: Usamos o pygame.transform.scale2x() para deixar as imagens maiores
+
+GENERATION = 0 # Mantém o controle da geração atual. Usa global para manter o valor após a execução da Função
 # endregion - Configs
 
 # region - Classes
@@ -179,10 +181,13 @@ class Base:
         window.blit(self.IMG, (self.x_2, self.y))
 # endregion - Classes
 
-def draw_window(window, birds, pipes, base, score):
+def draw_window(window, birds, pipes, base, score, generation):
     window.blit(BACKGROUND_IMG, (0, 0)) # window.blit mostra imagens da tela
     for pipe in pipes: # Pode haver mais de 1 cano na tela
         pipe.draw(window)
+
+    text = FONT.render("Generation: " + str(generation), 1, (255, 255, 255))
+    window.blit(text, (10, 10)) # O (10, 10) é a coordenada na tela
 
     text = FONT.render("Score: " + str(score), 1, (255, 255, 255))
     window.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10)) # O (WIN_WIDTH - 10 - text.get_width() faz com que o texto não saia da tela
@@ -195,6 +200,9 @@ def draw_window(window, birds, pipes, base, score):
 
 # Função Fitness para rodar o jogo
 def eval_genome(genomes, config):
+    global GENERATION 
+    GENERATION += 1
+
     pygame.init()
     window = pygame.display.set_mode(WIN_SIZE) # Define a tela de jogo e o tamanho
     clock = pygame.time.Clock() # Cria o elemento para definir o FPS do jogo
@@ -278,7 +286,7 @@ def eval_genome(genomes, config):
                 neuron_networks.pop(index)
                 birds_genomes.pop(index)
 
-        draw_window(window, birds, pipes, base, score)
+        draw_window(window, birds, pipes, base, score, GENERATION)
 
 # region - Neat
 # As configurações abaixo são de acordo com as informações da Documentação do NEAT: https://neat-python.readthedocs.io/en/latest/xor_example.html
@@ -289,7 +297,7 @@ def run(neat_config_file):
     population.add_reporter(neat.StatisticsReporter())
 
     # A função fitness vai gerar o Fitness para os passáros
-    winner = population.run(eval_genome, 50)
+    winner = population.run(eval_genome, 50) # O winner é o passáro que atinger o fitness-threshold
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
