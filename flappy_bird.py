@@ -298,6 +298,7 @@ def run(neat_config_file):
 
     # A função fitness vai gerar o Fitness para os passáros
     winner = population.run(eval_genome, 50) # O winner é o passáro que atinger o fitness-threshold
+    print('\nBest genome:\n{!s}'.format(winner)) # Mostra o "Winner" que é o pássaro mais "inteligente" de TODAS as gerações
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
